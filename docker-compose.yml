@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:16
+    container_name: pgdb
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./src/db/init:/docker-entrypoint-initdb.d:ro  # scripts SQL init ici
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -h localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    container_name: pme-app
+    restart: no
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src:/app  # pratique en dev (hot-reload si tu l’actives)
+      - ./data.csv:/app/data.csv:ro  # accès au CSV depuis le conteneur
+    command: >
+      sh -c "python main.py"
+
+  adminer:
+    image: adminer
+    container_name: adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_started
+
+volumes:
+  pg_data:
